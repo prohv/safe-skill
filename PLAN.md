@@ -29,6 +29,22 @@ SafeSkill CLI is a local, high-performance security gateway that intercepts pack
 
 **Deliverable:** Standalone scanner binary. Offline. No server.
 
+### Phase 1 Package Structure
+
+```
+safeskill/
+├── cmd/safeskill/          # CLI entry point (Phase 1)
+├── internal/
+│   ├── types/              # Shared types (Rule, Signal, Report) — zero imports
+│   │   ├── rule.go         #   Rule interface + severity constants
+│   │   └── signal.go       #   Signal struct
+│   ├── rules/              # Rule implementations (import types)
+│   ├── scanner/            # File traversal + worker pool + aggregation
+│   ├── engine/             # Decision engine (scoring + classification)
+│   └── report/             # JSON report output
+└── testdata/               # Test fixtures
+```
+
 ---
 
 ## Phase 2: Proxy Layer — Intercept + Enforce

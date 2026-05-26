@@ -1,4 +1,4 @@
-package rules
+package types
 
 type Rule interface {
 	Name() string

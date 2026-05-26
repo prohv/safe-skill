@@ -1,4 +1,4 @@
-package rules
+package types
 
 type Signal struct {
 	Rule     string `json:"rule"`
