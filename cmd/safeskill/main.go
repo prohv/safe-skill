@@ -144,7 +144,7 @@ func runProxyStart(args []string) {
 	upstream := fs.String("upstream", defaultUpstream, "upstream npm registry URL")
 	threshold := fs.Int("threshold", defaultThreshold, "override block threshold (0 = use engine default 70)")
 	workers := fs.Int("workers", defaultWorkers, "number of scan workers")
-	fs.Parse(args[1:])
+	fs.Parse(args)
 
 	srv, err := proxy.New(proxy.Config{
 		Port:      *port,
