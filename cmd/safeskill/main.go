@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"safeskill/internal/api"
@@ -41,6 +42,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "commands:\n")
 	fmt.Fprintf(os.Stderr, "  scan <path>   scan a package directory\n")
 	fmt.Fprintf(os.Stderr, "  proxy start   start the proxy server\n")
+	fmt.Fprintf(os.Stderr, "  proxy setup   configure npm to use the proxy\n")
+	fmt.Fprintf(os.Stderr, "  proxy tear    restore npm config to defaults\n")
 	fmt.Fprintf(os.Stderr, "  api start     start the API server\n")
 	fmt.Fprintf(os.Stderr, "  report <id>   fetch a scan report\n")
 }
@@ -87,11 +90,29 @@ func runScan(args []string) {
 }
 
 func runProxy(args []string) {
-	if len(args) < 1 || args[0] != "start" {
+	if len(args) < 1 {
 		fmt.Fprintf(os.Stderr, "usage: safeskill proxy start [flags]\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy setup\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy tear\n")
 		os.Exit(1)
 	}
 
+	switch args[0] {
+	case "start":
+		runProxyStart(args[1:])
+	case "setup":
+		runProxySetup()
+	case "tear":
+		runProxyTear()
+	default:
+		fmt.Fprintf(os.Stderr, "usage: safeskill proxy start [flags]\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy setup\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy tear\n")
+		os.Exit(1)
+	}
+}
+
+func runProxyStart(args []string) {
 	fileCfg, _ := config.Load(".safeskill/config.json")
 
 	defaultPort := 8080
@@ -141,6 +162,23 @@ func runProxy(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runProxySetup() {
+	if err := exec.Command("npm", "config", "set", "registry", "http://registry.npmjs.org/").Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: npm not found or failed\n")
+		os.Exit(1)
+	}
+	exec.Command("npm", "config", "set", "proxy", "http://localhost:8080").Run()
+	exec.Command("npm", "config", "set", "https-proxy", "").Run()
+	fmt.Println("npm configured: registry=http proxy=localhost:8080 https-proxy=off")
+}
+
+func runProxyTear() {
+	exec.Command("npm", "config", "delete", "registry").Run()
+	exec.Command("npm", "config", "delete", "proxy").Run()
+	exec.Command("npm", "config", "delete", "https-proxy").Run()
+	fmt.Println("npm config restored to defaults")
 }
 
 func runAPI(args []string) {
