@@ -7,7 +7,8 @@
 - Phase 1: **Complete** — 16 atomic commits, all tests passing
 - Phase 2: **Complete** — 10 atomic commits, all tests passing
 - Phase 3: **Complete** — 8 atomic commits, all tests passing
-- Next: Phase 4 — Hardening + Production Polish
+- Phase 4: **Complete** — 9 atomic commits, all tests passing
+- Next: v1.0 Release — Evaluate feedback, decide Phase 5
 
 ## Product Brief
 
@@ -48,6 +49,25 @@ curl -X POST http://localhost:9090/scan -d '{"path":"./pkg"}'
 go run ./cmd/safeskill/ report <uuid>
 # → prints saved report
 ```
+
+## Phase 4 — Hardening + Production Polish
+
+**What's built:**
+- HTTP client timeout (30s) — prevents hang on slow upstream
+- Response body size limit (100MB LimitReader) — OOM guard
+- Hop-by-hop header filter: added TE, Trailer, Upgrade to strip list
+- Combination boost scoring: base64+eval +30, network+env +25, postinstall+exec +40
+- Critical signal override: severity ≥ 80 → instant BLOCKED (returned as score 100)
+- SHA256 tarball caching: `.safeskill/cache/{hash}.json` with configurable TTL (default 24h)
+- JSON config file: `.safeskill/config.json` — proxy, cache, threshold, workers settings
+- CLI flag defaults from config file (CLI flags override config)
+- ANSI color output: green SAFE, yellow WARNING, red BLOCKED
+- Interactive block prompt: proxy mode prompts `[f]orce  [a]bort` on block
+- Performance benchmarks: Walk, Pool, ExtractTarball, FullPipeline
+- Edge case tests: 1000-file tar bomb, 50MB total size limit, 10-goroutine concurrent proxy, 500-file walk
+- Combination boost table tests: 9 subtests covering all pair combinations and critical override
+- README: install guide, config schema, rule authoring, agent integration examples
+- 6 new packages: `cache/`, `config/`, `cli/`, `engine/boosts.go`
 
 ## Phase 2 — Proxy Layer (Intercept + Enforce)
 
@@ -102,7 +122,8 @@ internal/
 │   ├── pool.go              #   Pool.Run(files): concurrent rule application
 │   └── aggregator.go        #   Aggregate(results): dedup + sort by severity + score
 ├── engine/                  # Decision engine
-│   └── decision.go          #   Classify(score) → "SAFE"/"WARNING"/"BLOCKED"
+│   ├── decision.go          #   Classify(score) → "SAFE"/"WARNING"/"BLOCKED"
+│   └── boosts.go            #   ApplyBoosts(): combination boost scoring
 ├── api/                     # API server (Phase 3)
 │   ├── server.go            #   HTTP server, Config, routes
 │   └── handlers.go          #   POST /scan, /scan-install, GET /report/{id}
@@ -116,6 +137,12 @@ internal/
 │   ├── pipeline.go          #   RunScan(): Walk → Pool → Aggregate → Classify
 │   ├── respond.go           #   writeAllowResponse(), writeBlockResponse()
 │   └── log.go               #   LogIntercept() structured output
+├── cache/                   # Tarball result caching (Phase 4)
+│   └── cache.go             #   SHA256 hash, Check(), Store(), Prune()
+├── config/                  # JSON config loader (Phase 4)
+│   └── config.go            #   FileConfig struct, Load()
+└── cli/                     # Terminal helpers (Phase 4)
+    └── color.go             #   ANSI colors, IsTerminal(), FormatBlocked()
 testdata/
 ├── safe-pkg/index.js        #   Clean fixture (score 0)
 └── suspicious-pkg/evil.js   #   Suspicious fixture (score 110)
@@ -133,6 +160,8 @@ testdata/
 | `go run ./cmd/safeskill/ report <id>` | Fetch a saved scan report |
 | `go run ./cmd/safeskill/ api start --port 9090 --reports-dir .safeskill/reports` | Custom API config |
 | `go test -count=1 ./...` | Run all tests (no cache) |
+| `go test -race -count=1 ./...` | Run all tests with race detector |
+| `go test -bench=. -benchmem ./internal/proxy/` | Run proxy benchmarks |
 | `go test -v ./internal/api/` | Run API tests with verbose |
 | `go test -v ./internal/proxy/` | Run proxy tests with verbose |
 | `go vet ./...` | Static analysis |
@@ -155,30 +184,28 @@ testdata/
 |------|------------|
 | `PRD.md` | Full product requirements, architecture, output formats |
 | `PLAN.md` | Phased development roadmap (4 phases + future) |
-| `temp-phase.md` | Atomic commit breakdown for Phase 1 + 2 + 3 (gitignored) |
+| `temp-phase.md` | Atomic commit breakdown for all phases (gitignored) |
 | `HANDOFF.md` | This session's handoff document (gitignored) |
 | `AGENTS.md` | Working notes and context rules |
 | `.codex/project-context.md` | This file — current project state |
 | `.codex/skills/` | Loaded skills (caveman, handoff, code-review, vulnhunter, semgrep, security-review) |
 
-## Phase 3 Checkpoint
+## Phase 4 Checkpoint
 
-Full system functional: scanner → proxy → API → report persistence. All agent endpoints operational. Ready for hardening.
+Production-ready v1.0 baseline complete. All PLAN.md Phase 4 deliverables implemented.
 
-## What's Next — Phase 4: Hardening + Production Polish
+## What's Next — v1.0 Release
 
-From `PLAN.md`:
-- Combination boost scoring: base64+eval +30, network+env +25, postinstall+exec +40
-- SHA256 tarball caching with TTL
-- JSON config file support
-- CLI UX polish: colors, interactive block prompts
-- Performance benchmarks
-- Security boundary test expansion
-- README expansion: install guide, rule authoring, agent integration
+Evaluate real-world feedback. Decide Phase 5 candidates:
+- Remote rule updates from config URL
+- Signature-based detection (known-malicious hash DB)
+- Trust scoring (package reputation)
+- Plugin system (Go plugins or WASM)
+- Multi-ecosystem support (PyPI, RubyGems, Maven)
 
 ## Suggested Skills for Next Session
 
 - **caveman** — token-efficient communication during development
-- **code-review** — review Phase 3 Go code before starting Phase 4
+- **code-review** — full project review before v1.0
 - **vulnhunter** — audit rule patterns, identify detection gaps
 - **semgrep** — static analysis on Go codebase

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.0.4-alpha] — 2026-05-27
+
+### Fixed
+- HTTP client timeout (30s) — prevents hang on slow upstream registry
+- Response body size limit (100MB LimitReader) — prevents OOM on oversized tarballs
+- Hop-by-hop header filter: TE, Trailer, Upgrade now stripped from forwarded responses
+
+### Added
+- Combination boost scoring: base64+eval +30, network+env +25, postinstall+exec +40
+- Critical signal override: severity ≥ 80 → instant BLOCKED
+- SHA256 tarball result caching with configurable TTL (`.safeskill/cache/{hash}.json`)
+- JSON config file support (`.safeskill/config.json`) with CLI flag override merge
+- ANSI color output for scan status (green SAFE, yellow WARNING, red BLOCKED)
+- Interactive block prompt in proxy mode (`[f]orce  [a]bort`)
+- Performance benchmarks: Walk, Pool, ExtractTarball, FullPipeline
+- Edge case tests: 1000-file tar bomb, 50MB total size limit, concurrent proxy (10 goroutines), 500-file walk
+- 9 combination boost table tests covering all pair combinations and critical override
+- README: install guide, config schema, rule authoring, agent integration examples
+
 ## [0.0.3-alpha] — 2026-05-27
 
 ### Added
