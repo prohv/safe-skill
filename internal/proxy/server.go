@@ -138,15 +138,20 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pkgName := packageNameFromURL(r.URL.Path)
+
 	blocked := result.Status == engine.StatusBlocked
 	if s.cfg.Threshold > 0 {
 		blocked = result.Score >= s.cfg.Threshold
 	}
 
 	if blocked {
+		LogIntercept(pkgName, "BLOCKED", result.Score, len(result.Signals))
 		writeBlockResponse(w, result, "")
 		return
 	}
 
+	LogIntercept(pkgName, result.Status, result.Score, len(result.Signals))
 	writeAllowResponse(w, resp.StatusCode, resp.Header, bytes.NewReader(body))
 }
+
