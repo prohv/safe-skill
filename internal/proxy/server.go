@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"time"
 
+	"safeskill/internal/cache"
 	"safeskill/internal/engine"
 	"safeskill/internal/report"
 )
@@ -22,6 +23,7 @@ type Config struct {
 	Upstream  string
 	Workers   int
 	Threshold int
+	CacheTTL  time.Duration
 }
 
 type Server struct {
@@ -29,6 +31,7 @@ type Server struct {
 	srv         *http.Server
 	proxy       *httputil.ReverseProxy
 	upstreamURL *url.URL
+	cc          *cache.Cache
 }
 
 func New(cfg Config) (*Server, error) {
@@ -52,6 +55,7 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	mux.HandleFunc("/", s.handler)
+	s.cc = cache.New(".safeskill/cache", cache.Config{TTL: cfg.CacheTTL})
 	return s, nil
 }
 
@@ -120,27 +124,49 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpDir, err := os.MkdirTemp("", "safeskill-extract-")
-	if err != nil {
-		http.Error(w, "temp dir error", http.StatusInternalServerError)
-		return
-	}
-	defer os.RemoveAll(tmpDir)
+	var result *ScanResult
 
-	_, err = ExtractTarball(bytes.NewReader(body), tmpDir)
-	if err != nil {
-		http.Error(w, "extract error", http.StatusInternalServerError)
-		return
-	}
-
-	result, err := RunScan(tmpDir, s.cfg.Workers)
-	if err != nil {
-		http.Error(w, "scan error", http.StatusInternalServerError)
-		return
+	if s.cc != nil && s.cfg.CacheTTL > 0 {
+		h := cache.Hash(body)
+		if rpt, ok := s.cc.Check(h); ok {
+			result = &ScanResult{
+				Signals: rpt.Signals,
+				Score:   rpt.Risk,
+				Status:  rpt.Status,
+				Report:  rpt,
+			}
+		}
 	}
 
-	if err := report.Save(".safeskill/reports", result.Report); err != nil {
-		log.Printf("proxy: save report: %v", err)
+	if result == nil {
+		tmpDir, err := os.MkdirTemp("", "safeskill-extract-")
+		if err != nil {
+			http.Error(w, "temp dir error", http.StatusInternalServerError)
+			return
+		}
+		defer os.RemoveAll(tmpDir)
+
+		_, err = ExtractTarball(bytes.NewReader(body), tmpDir)
+		if err != nil {
+			http.Error(w, "extract error", http.StatusInternalServerError)
+			return
+		}
+
+		result, err = RunScan(tmpDir, s.cfg.Workers)
+		if err != nil {
+			http.Error(w, "scan error", http.StatusInternalServerError)
+			return
+		}
+
+		if s.cc != nil && s.cfg.CacheTTL > 0 {
+			if err := s.cc.Store(cache.Hash(body), result.Report); err != nil {
+				log.Printf("proxy: cache store: %v", err)
+			}
+		}
+
+		if err := report.Save(".safeskill/reports", result.Report); err != nil {
+			log.Printf("proxy: save report: %v", err)
+		}
 	}
 
 	pkgName := packageNameFromURL(r.URL.Path)
