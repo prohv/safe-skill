@@ -1,0 +1,19 @@
+{
+  "name": "safe-skill-cli",
+  "version": "0.0.4",
+  "description": "Local security gateway for package installs — intercept, scan, and block malicious packages",
+  "bin": {
+    "safe-skill": "./bin/safeskill"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "bin/",
+    "install.js",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "keywords": ["security", "scanner", "proxy", "npm", "malware", "skills"],
+  "license": "MIT"
+}
