@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"safeskill/internal/engine"
+	"safeskill/internal/report"
 )
 
 type Config struct {
@@ -136,6 +137,10 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "scan error", http.StatusInternalServerError)
 		return
+	}
+
+	if err := report.Save(".safeskill/reports", result.Report); err != nil {
+		log.Printf("proxy: save report: %v", err)
 	}
 
 	pkgName := packageNameFromURL(r.URL.Path)
