@@ -42,6 +42,8 @@ func New(cfg Config) *Server {
 	}
 
 	mux.HandleFunc("POST /scan", s.handleScan)
+	mux.HandleFunc("POST /scan-install", s.handleScanInstall)
+	mux.HandleFunc("GET /report/{id}", s.handleReport)
 	return s
 }
 
