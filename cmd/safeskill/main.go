@@ -63,6 +63,7 @@ func runScan(args []string) {
 	pool := scanner.NewPool(*workers, rules.BuiltinRules())
 	results := pool.Run(files)
 	signals, score := scanner.Aggregate(results)
+	score = engine.ApplyBoosts(signals, score)
 	status := engine.Classify(score)
 
 	r := report.New(signals, score, status)
