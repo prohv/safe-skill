@@ -102,7 +102,7 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
@@ -114,7 +114,7 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTotalExtract*2))
 	if err != nil {
 		http.Error(w, "read error", http.StatusInternalServerError)
 		return

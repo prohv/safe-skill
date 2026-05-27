@@ -12,7 +12,8 @@ import (
 func writeAllowResponse(w http.ResponseWriter, statusCode int, headers http.Header, body io.Reader) {
 	for k, vs := range headers {
 		lower := strings.ToLower(k)
-		if lower == "connection" || lower == "keep-alive" || lower == "transfer-encoding" {
+		if lower == "connection" || lower == "keep-alive" || lower == "transfer-encoding" ||
+			lower == "te" || lower == "trailer" || lower == "upgrade" {
 			continue
 		}
 		if strings.HasPrefix(lower, "proxy-") {
