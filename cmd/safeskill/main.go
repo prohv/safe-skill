@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"safeskill/internal/api"
 	"safeskill/internal/engine"
 	"safeskill/internal/proxy"
 	"safeskill/internal/report"
@@ -22,6 +23,10 @@ func main() {
 		runScan(os.Args[2:])
 	case "proxy":
 		runProxy(os.Args[2:])
+	case "api":
+		runAPI(os.Args[2:])
+	case "report":
+		runReport(os.Args[2:])
 	default:
 		printUsage()
 		os.Exit(1)
@@ -33,6 +38,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "commands:\n")
 	fmt.Fprintf(os.Stderr, "  scan <path>   scan a package directory\n")
 	fmt.Fprintf(os.Stderr, "  proxy start   start the proxy server\n")
+	fmt.Fprintf(os.Stderr, "  api start     start the API server\n")
+	fmt.Fprintf(os.Stderr, "  report <id>   fetch a scan report\n")
 }
 
 func runScan(args []string) {
@@ -100,4 +107,49 @@ func runProxy(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runAPI(args []string) {
+	if len(args) < 1 || args[0] != "start" {
+		fmt.Fprintf(os.Stderr, "usage: safeskill api start [flags]\n")
+		os.Exit(1)
+	}
+
+	fs := flag.NewFlagSet("api start", flag.ExitOnError)
+	port := fs.Int("port", 9090, "api listen port")
+	reportsDir := fs.String("reports-dir", ".safeskill/reports", "reports directory")
+	workers := fs.Int("workers", 4, "number of scan workers")
+	fs.Parse(args[1:])
+
+	srv := api.New(api.Config{
+		Port:       *port,
+		ReportsDir: *reportsDir,
+		Workers:    *workers,
+	})
+
+	if err := srv.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runReport(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "usage: safeskill report <id>\n")
+		os.Exit(1)
+	}
+
+	r, err := report.Load(".safeskill/reports", args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: report not found\n")
+		os.Exit(1)
+	}
+
+	j, err := r.JSON()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(j)
 }
