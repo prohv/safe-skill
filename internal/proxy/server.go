@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"safeskill/internal/engine"
 )
 
 type Config struct {
@@ -107,13 +109,7 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK || !isTarballContent(resp) {
-		for k, vs := range resp.Header {
-			for _, v := range vs {
-				w.Header().Add(k, v)
-			}
-		}
-		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		writeAllowResponse(w, resp.StatusCode, resp.Header, resp.Body)
 		return
 	}
 
@@ -136,17 +132,21 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = RunScan(tmpDir, s.cfg.Workers)
+	result, err := RunScan(tmpDir, s.cfg.Workers)
 	if err != nil {
 		http.Error(w, "scan error", http.StatusInternalServerError)
 		return
 	}
 
-	for k, vs := range resp.Header {
-		for _, v := range vs {
-			w.Header().Add(k, v)
-		}
+	blocked := result.Status == engine.StatusBlocked
+	if s.cfg.Threshold > 0 {
+		blocked = result.Score >= s.cfg.Threshold
 	}
-	w.WriteHeader(resp.StatusCode)
-	w.Write(body)
+
+	if blocked {
+		writeBlockResponse(w, result, "")
+		return
+	}
+
+	writeAllowResponse(w, resp.StatusCode, resp.Header, bytes.NewReader(body))
 }
