@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"safeskill/internal/api"
+	"safeskill/internal/cli"
 	"safeskill/internal/config"
 	"safeskill/internal/engine"
 	"safeskill/internal/proxy"
@@ -69,6 +70,9 @@ func runScan(args []string) {
 	status := engine.Classify(score)
 
 	r := report.New(signals, score, status)
+	if cli.IsTerminal() {
+		fmt.Printf("%s (Risk: %d)\n", cli.ColorStatus(status), score)
+	}
 	j, err := r.JSON()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

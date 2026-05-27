@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"safeskill/internal/cache"
+	"safeskill/internal/cli"
 	"safeskill/internal/engine"
 	"safeskill/internal/report"
 )
@@ -177,6 +178,17 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if blocked {
+		if cli.IsTerminal() {
+			fmt.Print(cli.FormatBlocked(result.Score, pkgName, result.Report.Summary))
+			fmt.Print("\n[f]orce install  [a]bort: ")
+			var input string
+			fmt.Scanf("%s", &input)
+			if input == "f" {
+				LogIntercept(pkgName, "FORCED", result.Score, len(result.Signals))
+				writeAllowResponse(w, resp.StatusCode, resp.Header, bytes.NewReader(body))
+				return
+			}
+		}
 		LogIntercept(pkgName, "BLOCKED", result.Score, len(result.Signals))
 		writeBlockResponse(w, result, "")
 		return
