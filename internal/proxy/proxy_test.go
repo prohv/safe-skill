@@ -485,6 +485,90 @@ func TestLogIntercept(t *testing.T) {
 	}
 }
 
+func TestExtractTarball_TarBomb(t *testing.T) {
+	entries := make([]tarEntry, 1000)
+	for i := range entries {
+		entries[i] = tarEntry{
+			name: fmt.Sprintf("f%d", i),
+			body: "x",
+			mode: 0644,
+			typeflag: tar.TypeReg,
+		}
+	}
+	data := createTestTar(entries)
+	dest := t.TempDir()
+	files, err := ExtractTarball(bytes.NewReader(data), dest)
+	if err != nil {
+		t.Fatalf("ExtractTarball() error: %v", err)
+	}
+	if len(files) != 1000 {
+		t.Errorf("got %d files, want 1000", len(files))
+	}
+}
+
+func TestExtractTarball_TotalSizeLimit(t *testing.T) {
+	body := strings.Repeat("A", maxExtractSize)
+	entries := make([]tarEntry, 60)
+	for i := range entries {
+		entries[i] = tarEntry{
+			name: fmt.Sprintf("file%d.txt", i),
+			body: body,
+			mode: 0644,
+			typeflag: tar.TypeReg,
+		}
+	}
+	data := createTestTar(entries)
+	dest := t.TempDir()
+	files, err := ExtractTarball(bytes.NewReader(data), dest)
+	if err != nil {
+		t.Fatalf("ExtractTarball() error: %v", err)
+	}
+	if len(files) != 50 {
+		t.Errorf("got %d files, want 50 (total size limit)", len(files))
+	}
+}
+
+func TestProxyConcurrentRequests(t *testing.T) {
+	safeTar := buildTestTarball(t, filepath.Join("..", "..", "testdata", "safe-pkg"))
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Write(safeTar)
+	}))
+	defer upstream.Close()
+
+	srv, err := New(Config{Upstream: upstream.URL, Workers: 2, CacheTTL: 0})
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	proxyServer := httptest.NewServer(srv)
+	defer proxyServer.Close()
+
+	errs := make(chan error, 10)
+	for i := 0; i < 10; i++ {
+		go func() {
+			resp, err := http.Get(proxyServer.URL + "/safe/pkg/-/safe-1.0.0.tgz")
+			if err != nil {
+				errs <- err
+				return
+			}
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				errs <- fmt.Errorf("status = %d", resp.StatusCode)
+			} else {
+				errs <- nil
+			}
+		}()
+	}
+
+	for i := 0; i < 10; i++ {
+		if e := <-errs; e != nil {
+			t.Error(e)
+		}
+	}
+}
+
 func BenchmarkExtractTarball(b *testing.B) {
 	entries := make([]tarEntry, 100)
 	for i := range entries {

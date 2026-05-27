@@ -1,6 +1,8 @@
 package scanner
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -48,6 +50,31 @@ func TestIntegration(t *testing.T) {
 			t.Error("suspicious package had no signals, expected some")
 		}
 	})
+}
+
+func TestWalk_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	files, err := Walk(dir)
+	if err != nil {
+		t.Fatalf("Walk() error: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("Walk() got %d files in empty dir, want 0", len(files))
+	}
+}
+
+func TestWalk_ManyFiles(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 500; i++ {
+		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.js", i)), []byte("x"), 0644)
+	}
+	files, err := Walk(dir)
+	if err != nil {
+		t.Fatalf("Walk() error: %v", err)
+	}
+	if len(files) != 500 {
+		t.Errorf("Walk() got %d files, want 500", len(files))
+	}
 }
 
 func BenchmarkWalk(b *testing.B) {
