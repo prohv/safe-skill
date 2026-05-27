@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"safeskill/internal/api"
+	"safeskill/internal/config"
 	"safeskill/internal/engine"
 	"safeskill/internal/proxy"
 	"safeskill/internal/report"
@@ -86,11 +88,37 @@ func runProxy(args []string) {
 		os.Exit(1)
 	}
 
+	fileCfg, _ := config.Load(".safeskill/config.json")
+
+	defaultPort := 8080
+	defaultUpstream := "https://registry.npmjs.org"
+	defaultThreshold := 0
+	defaultWorkers := 4
+	defaultCacheTTL := 24 * time.Hour
+
+	if fileCfg != nil {
+		if fileCfg.Proxy.Port > 0 {
+			defaultPort = fileCfg.Proxy.Port
+		}
+		if fileCfg.Proxy.Upstream != "" {
+			defaultUpstream = fileCfg.Proxy.Upstream
+		}
+		if fileCfg.Threshold > 0 {
+			defaultThreshold = fileCfg.Threshold
+		}
+		if fileCfg.Workers > 0 {
+			defaultWorkers = fileCfg.Workers
+		}
+		if fileCfg.Cache.TTL != "" {
+			defaultCacheTTL = fileCfg.CacheTTL()
+		}
+	}
+
 	fs := flag.NewFlagSet("proxy start", flag.ExitOnError)
-	port := fs.Int("port", 8080, "proxy listen port")
-	upstream := fs.String("upstream", "https://registry.npmjs.org", "upstream npm registry URL")
-	threshold := fs.Int("threshold", 0, "override block threshold (0 = use engine default 70)")
-	workers := fs.Int("workers", 4, "number of scan workers")
+	port := fs.Int("port", defaultPort, "proxy listen port")
+	upstream := fs.String("upstream", defaultUpstream, "upstream npm registry URL")
+	threshold := fs.Int("threshold", defaultThreshold, "override block threshold (0 = use engine default 70)")
+	workers := fs.Int("workers", defaultWorkers, "number of scan workers")
 	fs.Parse(args[1:])
 
 	srv, err := proxy.New(proxy.Config{
@@ -98,6 +126,7 @@ func runProxy(args []string) {
 		Upstream:  *upstream,
 		Workers:   *workers,
 		Threshold: *threshold,
+		CacheTTL:  defaultCacheTTL,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
