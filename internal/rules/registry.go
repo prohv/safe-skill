@@ -9,6 +9,5 @@ func BuiltinRules() []types.Rule {
 		NetworkRule{},
 		EnvAccessRule{},
 		ObfuscationRule{},
-		PostinstallRule{},
 	}
 }
