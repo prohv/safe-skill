@@ -6,11 +6,12 @@
 - Branch: `dev`
 - Phase 1: **Complete** — 16 atomic commits, all tests passing
 - Phase 2: **Complete** — 10 atomic commits, all tests passing
-- Next: Phase 3 — Local API + Agent Integration
+- Phase 3: **Complete** — 8 atomic commits, all tests passing
+- Next: Phase 4 — Hardening + Production Polish
 
 ## Product Brief
 
-SafeSkill CLI = local Go-based proxy + scanner for secure package installs. Intercepts npm traffic via proxy, extracts tarballs, scans concurrently with static/heuristic rules, scores risk, enforces allow/warn/block, outputs JSON reports. Agent-friendly API planned (Phase 3). Pure Go, offline-first, deterministic.
+SafeSkill CLI = local Go-based proxy + scanner + API for secure package installs. Intercepts npm traffic via proxy, extracts tarballs, scans concurrently with static/heuristic rules, scores risk, enforces allow/warn/block, persists reports to disk, exposes machine-readable API. Pure Go, offline-first, deterministic.
 
 ## Phase 1 — Core Scanner (Standalone CLI)
 
@@ -21,6 +22,32 @@ SafeSkill CLI = local Go-based proxy + scanner for secure package installs. Inte
 - Report engine: structured JSON output with report_id, signatures, signals, summary
 - CLI: `safeskill scan <path>` via stdlib `flag` (`--workers`, `--output`)
 - 42 unit tests across 6 rules + 8 boundary tests for classification + 2 integration scenarios
+
+## Phase 3 — Local API + Agent Integration
+
+**What's built:**
+- HTTP API server on separate port (9090) with configurable reports directory
+- `POST /scan` — submit package path, returns full scan report JSON
+- `POST /scan-install` — submit from proxy flow, returns compact `{report_id, action, risk}`
+- `GET /report/{id}` — fetch past scan report by UUID v4
+- Report persistence: JSON files on disk (`.safeskill/reports/{uuid}.json`)
+- UUID v4 report IDs (previously 8-byte hex)
+- Proxy auto-persists scan reports to disk after every intercept
+- CLI: `safeskill api start [--port] [--reports-dir] [--workers]`
+- CLI: `safeskill report <id>` — load and print saved report
+- 9 unit tests + 6 integration tests for API handlers and pipeline
+
+**Usage:**
+```bash
+go run ./cmd/safeskill/ api start
+# → api listening on :9090
+
+curl -X POST http://localhost:9090/scan -d '{"path":"./pkg"}'
+# → full report JSON
+
+go run ./cmd/safeskill/ report <uuid>
+# → prints saved report
+```
 
 ## Phase 2 — Proxy Layer (Intercept + Enforce)
 
@@ -76,8 +103,12 @@ internal/
 │   └── aggregator.go        #   Aggregate(results): dedup + sort by severity + score
 ├── engine/                  # Decision engine
 │   └── decision.go          #   Classify(score) → "SAFE"/"WARNING"/"BLOCKED"
-├── report/                  # Report output
-│   └── report.go            #   Report struct → JSON() with indent
+├── api/                     # API server (Phase 3)
+│   ├── server.go            #   HTTP server, Config, routes
+│   └── handlers.go          #   POST /scan, /scan-install, GET /report/{id}
+├── report/                  # Report output + persistence
+│   ├── report.go            #   Report struct, Save(), Load(), UUID v4
+│   └── report_test.go       #   Unit tests for persistence
 ├── proxy/                   # Proxy server (Phase 2)
 │   ├── server.go            #   Config, Server.New(), Start(), handler, serveHTTP
 │   ├── tarball.go           #   isTarballURL(), isTarballContent(), packageNameFromURL()
@@ -98,7 +129,11 @@ testdata/
 | `go run ./cmd/safeskill/ scan <path>` | Scan a directory for threats |
 | `go run ./cmd/safeskill/ proxy start` | Start proxy server |
 | `go run ./cmd/safeskill/ proxy start --port 9090 --upstream https://registry.yarnpkg.com` | Custom proxy config |
+| `go run ./cmd/safeskill/ api start` | Start API server |
+| `go run ./cmd/safeskill/ report <id>` | Fetch a saved scan report |
+| `go run ./cmd/safeskill/ api start --port 9090 --reports-dir .safeskill/reports` | Custom API config |
 | `go test -count=1 ./...` | Run all tests (no cache) |
+| `go test -v ./internal/api/` | Run API tests with verbose |
 | `go test -v ./internal/proxy/` | Run proxy tests with verbose |
 | `go vet ./...` | Static analysis |
 
@@ -120,31 +155,30 @@ testdata/
 |------|------------|
 | `PRD.md` | Full product requirements, architecture, output formats |
 | `PLAN.md` | Phased development roadmap (4 phases + future) |
-| `temp-phase.md` | Atomic commit breakdown for Phase 1 + 2 (gitignored) |
+| `temp-phase.md` | Atomic commit breakdown for Phase 1 + 2 + 3 (gitignored) |
 | `HANDOFF.md` | This session's handoff document (gitignored) |
 | `AGENTS.md` | Working notes and context rules |
 | `.codex/project-context.md` | This file — current project state |
 | `.codex/skills/` | Loaded skills (caveman, handoff, code-review, vulnhunter, semgrep, security-review) |
 
-## Phase 2 Checkpoint
+## Phase 3 Checkpoint
 
-Review rule effectiveness with real data. Tune thresholds, weights, reduce false positives before Phase 3.
+Full system functional: scanner → proxy → API → report persistence. All agent endpoints operational. Ready for hardening.
 
-## What's Next — Phase 3: Local API + Agent Integration
+## What's Next — Phase 4: Hardening + Production Polish
 
 From `PLAN.md`:
-- HTTP API server on separate port (e.g. 9090)
-- `POST /scan` — submit package path → scan result JSON
-- `POST /scan-install` — submit from proxy flow → async scan + decision
-- `GET /report/{id}` — fetch past scan report by UUID
-- Report persistence: JSON files on disk (`.safeskill/reports/`)
-- Report ID: UUID v4 per scan
-- CLI: `safeskill report <id>`
-- Machine-readable API for agent integration
+- Combination boost scoring: base64+eval +30, network+env +25, postinstall+exec +40
+- SHA256 tarball caching with TTL
+- JSON config file support
+- CLI UX polish: colors, interactive block prompts
+- Performance benchmarks
+- Security boundary test expansion
+- README expansion: install guide, rule authoring, agent integration
 
 ## Suggested Skills for Next Session
 
 - **caveman** — token-efficient communication during development
-- **code-review** — review Phase 2 Go code before starting Phase 3
+- **code-review** — review Phase 3 Go code before starting Phase 4
 - **vulnhunter** — audit rule patterns, identify detection gaps
 - **semgrep** — static analysis on Go codebase

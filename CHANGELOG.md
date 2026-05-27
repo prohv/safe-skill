@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.3-alpha] — 2026-05-27
+
+### Added
+- HTTP API server on configurable port (9090) with graceful shutdown
+- `POST /scan` — submit package path, returns full scan report JSON
+- `POST /scan-install` — submit from proxy flow, returns compact `{report_id, action, risk}`
+- `GET /report/{id}` — fetch past scan report by UUID v4
+- Report persistence: JSON files on disk (`.safeskill/reports/{uuid}.json`)
+- UUID v4 report IDs (replaced 8-byte hex) with RFC 4122 version/variant bits
+- `Save(dir, *Report)` and `Load(dir, id)` functions on report package
+- CLI: `safeskill api start [--port] [--reports-dir] [--workers]`
+- CLI: `safeskill report <id>` — load and print saved report
+- Proxy auto-persists scan reports to disk after every tarball intercept
+- 9 unit tests covering API handlers (scan, scan-install, report, errors, config)
+- 6 integration tests covering API pipeline (safe/suspicious scan, report round-trip, not found, disk persistence)
+
 ## [0.0.2-alpha] — 2026-05-27
 
 ### Added
