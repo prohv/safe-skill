@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -68,7 +70,83 @@ func (s *Server) Start() error {
 	return s.srv.Shutdown(ctx)
 }
 
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.srv.Handler.ServeHTTP(w, r)
+}
+
 func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("proxy %s %s", r.Method, r.URL.Path)
+	if isTarballURL(r.URL.Path) {
+		s.handleTarball(w, r)
+		return
+	}
 	s.proxy.ServeHTTP(w, r)
+}
+
+func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
+	upstreamURL := *r.URL
+	upstreamURL.Scheme = s.upstreamURL.Scheme
+	upstreamURL.Host = s.upstreamURL.Host
+
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL.String(), r.Body)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusInternalServerError)
+		return
+	}
+
+	for _, key := range []string{"Accept", "Accept-Encoding", "User-Agent", "Authorization"} {
+		if v := r.Header.Get(key); v != "" {
+			req.Header.Set(key, v)
+		}
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, "upstream error", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK || !isTarballContent(resp) {
+		for k, vs := range resp.Header {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+		return
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "read error", http.StatusInternalServerError)
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "safeskill-extract-")
+	if err != nil {
+		http.Error(w, "temp dir error", http.StatusInternalServerError)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	_, err = ExtractTarball(bytes.NewReader(body), tmpDir)
+	if err != nil {
+		http.Error(w, "extract error", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = RunScan(tmpDir, s.cfg.Workers)
+	if err != nil {
+		http.Error(w, "scan error", http.StatusInternalServerError)
+		return
+	}
+
+	for k, vs := range resp.Header {
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
 }
