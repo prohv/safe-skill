@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"safeskill/internal/cache"
-	"safeskill/internal/cli"
 	"safeskill/internal/engine"
 	"safeskill/internal/report"
 )
@@ -61,12 +60,7 @@ func New(cfg Config) (*Server, error) {
 }
 
 func (s *Server) Start() error {
-	go func() {
-		log.Printf("proxy listening on :%d, upstream %s", s.cfg.Port, s.cfg.Upstream)
-		if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("proxy server error: %v", err)
-		}
-	}()
+	s.ListenAndServeAsync()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
@@ -75,6 +69,23 @@ func (s *Server) Start() error {
 	log.Println("proxy shutting down...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	return s.Shutdown(ctx)
+}
+
+func (s *Server) LogListen() {
+	log.Printf("proxy listening on :%d, upstream %s", s.cfg.Port, s.cfg.Upstream)
+}
+
+func (s *Server) ListenAndServeAsync() {
+	go func() {
+		s.LogListen()
+		if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("proxy server error: %v", err)
+		}
+	}()
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
 	return s.srv.Shutdown(ctx)
 }
 
@@ -178,17 +189,6 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if blocked {
-		if cli.IsTerminal() {
-			fmt.Print(cli.FormatBlocked(result.Score, pkgName, result.Report.Summary))
-			fmt.Print("\n[f]orce install  [a]bort: ")
-			var input string
-			fmt.Scanf("%s", &input)
-			if input == "f" {
-				LogIntercept(pkgName, "FORCED", result.Score, len(result.Signals))
-				writeAllowResponse(w, resp.StatusCode, resp.Header, bytes.NewReader(body))
-				return
-			}
-		}
 		LogIntercept(pkgName, "BLOCKED", result.Score, len(result.Signals))
 		writeBlockResponse(w, result, "")
 		return

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"time"
 
 	"safeskill/internal/api"
@@ -42,6 +45,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "commands:\n")
 	fmt.Fprintf(os.Stderr, "  scan <path>   scan a package directory\n")
 	fmt.Fprintf(os.Stderr, "  proxy start   start the proxy server\n")
+	fmt.Fprintf(os.Stderr, "  proxy run     setup + start + teardown on exit\n")
+	fmt.Fprintf(os.Stderr, "  proxy wrap    setup + proxy + npm install + teardown\n")
 	fmt.Fprintf(os.Stderr, "  proxy setup   configure npm to use the proxy\n")
 	fmt.Fprintf(os.Stderr, "  proxy tear    restore npm config to defaults\n")
 	fmt.Fprintf(os.Stderr, "  api start     start the API server\n")
@@ -92,6 +97,8 @@ func runScan(args []string) {
 func runProxy(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintf(os.Stderr, "usage: safeskill proxy start [flags]\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy run   [flags]  (setup + start + tear)\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy wrap  [flags] -- <npm cmd>\n")
 		fmt.Fprintf(os.Stderr, "       safeskill proxy setup\n")
 		fmt.Fprintf(os.Stderr, "       safeskill proxy tear\n")
 		os.Exit(1)
@@ -100,19 +107,25 @@ func runProxy(args []string) {
 	switch args[0] {
 	case "start":
 		runProxyStart(args[1:])
+	case "run":
+		runProxyRun(args[1:])
+	case "wrap":
+		runProxyWrap(args[1:])
 	case "setup":
 		runProxySetup()
 	case "tear":
 		runProxyTear()
 	default:
 		fmt.Fprintf(os.Stderr, "usage: safeskill proxy start [flags]\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy run   [flags]  (setup + start + tear)\n")
+		fmt.Fprintf(os.Stderr, "       safeskill proxy wrap  [flags] -- <npm cmd>\n")
 		fmt.Fprintf(os.Stderr, "       safeskill proxy setup\n")
 		fmt.Fprintf(os.Stderr, "       safeskill proxy tear\n")
 		os.Exit(1)
 	}
 }
 
-func runProxyStart(args []string) {
+func newProxyServer(args []string) (*proxy.Server, error) {
 	fileCfg, _ := config.Load(".safeskill/config.json")
 
 	defaultPort := 8080
@@ -139,29 +152,57 @@ func runProxyStart(args []string) {
 		}
 	}
 
-	fs := flag.NewFlagSet("proxy start", flag.ExitOnError)
+	fs := flag.NewFlagSet("proxy", flag.ExitOnError)
 	port := fs.Int("port", defaultPort, "proxy listen port")
 	upstream := fs.String("upstream", defaultUpstream, "upstream npm registry URL")
 	threshold := fs.Int("threshold", defaultThreshold, "override block threshold (0 = use engine default 70)")
 	workers := fs.Int("workers", defaultWorkers, "number of scan workers")
 	fs.Parse(args)
 
-	srv, err := proxy.New(proxy.Config{
+	return proxy.New(proxy.Config{
 		Port:      *port,
 		Upstream:  *upstream,
 		Workers:   *workers,
 		Threshold: *threshold,
 		CacheTTL:  defaultCacheTTL,
 	})
+}
+
+func runProxyStart(args []string) {
+	srv, err := newProxyServer(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-
 	if err := srv.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runProxyRun(args []string) {
+	runProxySetup()
+
+	srv, err := newProxyServer(args)
+	if err != nil {
+		runProxyTear()
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	srv.ListenAndServeAsync()
+	log.Println("proxy running in background — Ctrl+C to stop and restore npm config")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+	<-quit
+
+	log.Println("stopping proxy...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	srv.Shutdown(ctx)
+
+	runProxyTear()
 }
 
 func runProxySetup() {
@@ -179,6 +220,51 @@ func runProxyTear() {
 	exec.Command("npm", "config", "delete", "proxy").Run()
 	exec.Command("npm", "config", "delete", "https-proxy").Run()
 	fmt.Println("npm config restored to defaults")
+}
+
+func splitWrap(args []string) (proxyArgs, cmdArgs []string) {
+	for i, a := range args {
+		if a == "--" {
+			return args[:i], args[i+1:]
+		}
+	}
+	return args, nil
+}
+
+func runProxyWrap(args []string) {
+	proxyArgs, cmdArgs := splitWrap(args)
+	if len(cmdArgs) == 0 {
+		fmt.Fprintf(os.Stderr, "usage: safeskill proxy wrap [flags] -- <npm command>\n")
+		os.Exit(1)
+	}
+
+	runProxySetup()
+
+	srv, err := newProxyServer(proxyArgs)
+	if err != nil {
+		runProxyTear()
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	srv.ListenAndServeAsync()
+	log.Println("proxy ready — running npm, stand by...")
+
+	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	exitCode := 0
+	if err := cmd.Run(); err != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
+
+	log.Println("npm finished, stopping proxy...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	srv.Shutdown(ctx)
+
+	runProxyTear()
+	os.Exit(exitCode)
 }
 
 func runAPI(args []string) {
