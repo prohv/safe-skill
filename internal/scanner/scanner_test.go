@@ -49,3 +49,20 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 }
+
+func BenchmarkWalk(b *testing.B) {
+	root := filepath.Join("..", "..", "testdata", "suspicious-pkg")
+	for i := 0; i < b.N; i++ {
+		Walk(root)
+	}
+}
+
+func BenchmarkPool(b *testing.B) {
+	root := filepath.Join("..", "..", "testdata", "suspicious-pkg")
+	files, _ := Walk(root)
+	pool := NewPool(2, rules.BuiltinRules())
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pool.Run(files)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -481,5 +482,24 @@ func TestLogIntercept(t *testing.T) {
 	}
 	if !strings.Contains(output, "files=3") {
 		t.Errorf("log missing file count: %s", output)
+	}
+}
+
+func BenchmarkExtractTarball(b *testing.B) {
+	entries := make([]tarEntry, 100)
+	for i := range entries {
+		entries[i] = tarEntry{
+			name: fmt.Sprintf("file%d.js", i),
+			body: "console.log(1)",
+			mode: 0644,
+			typeflag: tar.TypeReg,
+		}
+	}
+	data := createTestTar(entries)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		dest, _ := os.MkdirTemp("", "bench-extract-")
+		ExtractTarball(bytes.NewReader(data), dest)
+		os.RemoveAll(dest)
 	}
 }

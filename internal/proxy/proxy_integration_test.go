@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func buildTestTarball(t *testing.T, dir string) []byte {
+func buildTestTarball(tb testing.TB, dir string) []byte {
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
@@ -53,7 +53,7 @@ func buildTestTarball(t *testing.T, dir string) []byte {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("building tarball from %s: %v", dir, err)
+		tb.Fatalf("building tarball from %s: %v", dir, err)
 	}
 
 	tw.Close()
@@ -222,4 +222,25 @@ func TestProxyIntegration_UpstreamError(t *testing.T) {
 			t.Errorf("body = %q, want upstream response", string(body))
 		}
 	})
+}
+
+func BenchmarkFullPipeline(b *testing.B) {
+	safeTar := buildTestTarball(b, filepath.Join("..", "..", "testdata", "safe-pkg"))
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Write(safeTar)
+	}))
+	defer upstream.Close()
+
+	srv, _ := New(Config{Upstream: upstream.URL, Workers: 2, CacheTTL: 0})
+	proxyServer := httptest.NewServer(srv)
+	defer proxyServer.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, _ := http.Get(proxyServer.URL + "/bench/pkg/-/pkg-1.0.0.tgz")
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
 }
