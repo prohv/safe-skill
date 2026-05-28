@@ -8,7 +8,7 @@
 - Hop-by-hop header filter: TE, Trailer, Upgrade now stripped from forwarded responses
 
 ### Added
-- Combination boost scoring: base64+eval +30, network+env +25, postinstall+exec +40
+- Combination boost scoring: base64+eval +30, network+env +25
 - Critical signal override: severity ≥ 80 → instant BLOCKED
 - SHA256 tarball result caching with configurable TTL (`.safeskill/cache/{hash}.json`)
 - JSON config file support (`.safeskill/config.json`) with CLI flag override merge

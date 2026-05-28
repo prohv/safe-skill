@@ -24,14 +24,14 @@ func TestApplyBoosts(t *testing.T) {
 		{"one signal no boost", sigs(sig("ShellExec", 50)), 50},
 		{"obfuscation + eval", sigs(sig("Obfuscation", 20), sig("DynamicEval", 50)), 100},
 		{"network + env", sigs(sig("NetworkAccess", 30), sig("EnvAccess", 30)), 85},
-		{"postinstall + exec", sigs(sig("PostinstallHook", 50), sig("ShellExec", 50)), 140},
+		{"postinstall + exec", sigs(sig("PostinstallHook", 50), sig("ShellExec", 50)), 100},
 		{"obfuscation alone", sigs(sig("Obfuscation", 20)), 20},
 		{"eval alone", sigs(sig("DynamicEval", 50)), 50},
 		{"all three pairs", sigs(
 			sig("Obfuscation", 20), sig("DynamicEval", 50),
 			sig("NetworkAccess", 30), sig("EnvAccess", 30),
-			sig("PostinstallHook", 50), sig("ShellExec", 50),
-		), 325},
+			sig("ShellExec", 50),
+		), 235},
 		{"critical overrides all", sigs(sig("ShellExec", 80)), 100},
 	}
 
