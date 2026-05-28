@@ -1,8 +1,8 @@
 # SafeSkill CLI
 
-**Local security gateway for package installations.**
+**Local security gateway for skills installations.**
 
-Intercept, scan, and block malicious npm packages at install time — offline-first, deterministic, zero external dependencies. Proxy mode streams tarballs entirely in-memory — no temp files, no disk I/O. Written in pure Go (stdlib only).
+Intercept, scan, and block malicious skills downloaded via npm at install time; offline-first, deterministic, zero external dependencies. Written in pure Go (stdlib only).
 
 ## Installation
 
@@ -120,7 +120,7 @@ safeskill scan ./some-package
 ```
 npm install malicious-skill/package
   │
-  ▼  HTTP request to registry.npmjs.org
+  ▼  HTTP request to registry.npmjs.org/github
   │
 safeskill proxy (listening on :8080)
   │
