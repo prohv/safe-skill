@@ -2,7 +2,7 @@
 
 **Local security gateway for package installations.**
 
-Intercept, scan, and block malicious npm packages at install time — offline-first, deterministic, zero external dependencies. Written in pure Go (stdlib only).
+Intercept, scan, and block malicious npm packages at install time — offline-first, deterministic, zero external dependencies. Proxy mode streams tarballs entirely in-memory — no temp files, no disk I/O. Written in pure Go (stdlib only).
 
 ## Installation
 
@@ -146,13 +146,15 @@ safeskill proxy (listening on :8080)
   │      → HIT → skip extraction + scan, use cached Report
   │      → MISS → continue to extraction
   │
-  ├─ 6. ExtractTarball(body, tmpDir)
+  ├─ 6. ScanTarballInMemory(body, workers)
   │      → gzip.NewReader → tar.NewReader → streaming extraction
-  │      → Safety guards (see section 7)
-  │      → Returns []string (extracted file paths)
+  │      → Safety guards applied inline (see section 7)
+  │      → Each file read into memory buffer → run all 6 rules → discard buffer
+  │      → No temp files, no disk writes, no cleanup
   │
-  ├─ 7. RunScan(tmpDir, workers)
-  │      → Same Walk → Pool → Aggregate → Boost → Classify pipeline as standalone
+  ├─ 7. Parallel worker pool
+  │      → Goroutines scan in-memory buffers concurrently
+  │      → Aggregate → Boost → Classify → Report (same pipeline as standalone)
   │
   ├─ 8. Cache result → cc.Store(hash, report)
   │
@@ -214,7 +216,7 @@ All rules are stateless structs implementing the `types.Rule` interface and regi
 
 ### 7. Tarball Extraction Safety Guards
 
-Applied during proxy-mode tarball extraction (`internal/proxy/extract.go`):
+Applied during proxy-mode tarball streaming (`internal/proxy/scan_inmem.go`):
 
 | Guard | Limit | Implementation |
 |-------|-------|----------------|
@@ -397,7 +399,8 @@ internal/
 │   └── boosts.go            # ApplyBoosts(): combo bonuses + critical severity override
 ├── proxy/
 │   ├── server.go            # HTTP reverse proxy server, handler, tarball intercept flow
-│   ├── extract.go           # Streaming tar+gzip extraction, safety guards (zip-slip, depth, size)
+│   ├── scan_inmem.go        # In-memory tarball streaming + parallel rule scanning
+│   ├── extract.go           # On-disk tar+gzip extraction for API/standalone mode
 │   ├── tarball.go           # URL/Content-Type tarball detection, package name extraction
 │   ├── pipeline.go          # RunScan() — Walk → Pool → Aggregate → Boost → Classify → Report
 │   ├── respond.go           # writeAllowResponse / writeBlockResponse (HTTP 403 JSON)
@@ -554,7 +557,7 @@ Severity constants:
 
 - **Local-first** — no cloud dependency, no data exfiltration. Every scan runs entirely on your machine.
 - **Deterministic** — same package always produces the same verdict (no AI/ML). Output is reproducible.
-- **Fast** — concurrent worker pool targets <1–2s scan time. Streaming extraction avoids full memory load.
+- **Fast** — concurrent worker pool targets <1–2s scan time. Pure in-memory streaming for proxy mode avoids disk I/O entirely.
 - **Safe** — never executes scanned code. Zip-slip, symlink, depth, and size limits enforced on all extractions.
 - **Agent-friendly** — structured JSON output (report ID, risk score, signals, summary) for machine consumption. REST API for agent/CI integration.
 - **Zero dependencies** — pure Go standard library. No cobra, no uuid, no external frameworks. Single `go.mod` line.
