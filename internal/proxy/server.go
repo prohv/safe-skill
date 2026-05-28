@@ -151,22 +151,9 @@ func (s *Server) handleTarball(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result == nil {
-		tmpDir, err := os.MkdirTemp("", "safeskill-extract-")
+		result, err = ScanTarballInMemory(body, s.cfg.Workers)
 		if err != nil {
-			http.Error(w, "temp dir error", http.StatusInternalServerError)
-			return
-		}
-		defer os.RemoveAll(tmpDir)
-
-		_, err = ExtractTarball(bytes.NewReader(body), tmpDir)
-		if err != nil {
-			http.Error(w, "extract error", http.StatusInternalServerError)
-			return
-		}
-
-		result, err = RunScan(tmpDir, s.cfg.Workers)
-		if err != nil {
-			http.Error(w, "scan error", http.StatusInternalServerError)
+			http.Error(w, "scan error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 

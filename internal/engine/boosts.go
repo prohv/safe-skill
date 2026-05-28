@@ -18,10 +18,6 @@ func ApplyBoosts(signals []types.Signal, score int) int {
 	if has("NetworkAccess") && has("EnvAccess") {
 		score += 25
 	}
-	if has("PostinstallHook") && has("ShellExec") {
-		score += 40
-	}
-
 	for _, s := range signals {
 		if s.Severity >= types.SeverityCritical {
 			return 100
